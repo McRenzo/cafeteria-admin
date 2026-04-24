@@ -1,121 +1,109 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { supabase } from './lib/supabase'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [usuario, setUsuario] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [session, setSession] = useState(null)
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+
+    if (!usuario || !password) {
+      alert('Ingresa usuario y contraseña')
+      return
+    }
+
+    setLoading(true)
+
+    try {
+      const cleanUser = usuario.trim().toLowerCase()
+      const cleanPass = password.trim()
+
+      const { data, error } = await supabase
+        .from('usuarios_app')
+        .select('*')
+        .eq('usuario', cleanUser)
+        .single()
+
+      if (error || !data) {
+        alert('Usuario no encontrado')
+        return
+      }
+
+      if (data.rol !== 'admin') {
+        alert('Solo los administradores pueden ingresar al panel web')
+        return
+      }
+
+      const { data: isValid, error: authError } = await supabase.rpc(
+        'verificar_password',
+        {
+          p_usuario: cleanUser,
+          p_pass: cleanPass,
+        }
+      )
+
+      if (authError || !isValid) {
+        alert('Contraseña incorrecta')
+        return
+      }
+
+      setSession(data)
+    } catch (error) {
+      alert('Error de conexión con Supabase')
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (session) {
+    return (
+      <div className="dashboard">
+        <h1>Panel Administrador</h1>
+        <p>Bienvenido, {session.usuario}</p>
+
+        <button onClick={() => setSession(null)}>
+          Cerrar sesión
+        </button>
+      </div>
+    )
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+    <main className="login-page">
+      <section className="login-card">
+        <div className="logo">☕</div>
+
+        <h1>Panel Cafetería</h1>
+        <p>Control de asistencia - Administrador</p>
+
+        <form onSubmit={handleLogin}>
+          <label>Usuario</label>
+          <input
+            type="text"
+            value={usuario}
+            onChange={(e) => setUsuario(e.target.value)}
+            placeholder="Ingresa tu usuario"
+          />
+
+          <label>Contraseña</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Ingresa tu contraseña"
+          />
+
+          <button type="submit" disabled={loading}>
+            {loading ? 'Validando...' : 'Iniciar sesión'}
+          </button>
+        </form>
       </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    </main>
   )
 }
 

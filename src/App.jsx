@@ -179,6 +179,23 @@ export default function App() {
     }
   }
 
+  const cambiarEstadoTrabajador = async (id, estadoActual) => {
+    try {
+      const { error } = await supabase
+        .from('trabajadores')
+        .update({ activo: !estadoActual })
+        .eq('id', id)
+
+      if (error) throw error
+
+      await cargarTrabajadores()
+      await cargarDashboard()
+    } catch (err) {
+      console.error('Error cambiando estado:', err)
+      alert('No se pudo cambiar el estado del trabajador')
+    }
+  }
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'trabajadores', label: 'Trabajadores', icon: Users },
@@ -405,6 +422,7 @@ export default function App() {
                         <th>Nivel</th>
                         <th>Estado</th>
                         <th>Creado por</th>
+                        <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -431,6 +449,14 @@ export default function App() {
                             </span>
                           </td>
                           <td>{t.creado_por || 'Admin'}</td>
+                          <td>
+                            <button
+                              className={`status-btn ${t.activo ? 'danger-action' : 'success-action'}`}
+                              onClick={() => cambiarEstadoTrabajador(t.id, t.activo)}
+                            >
+                              {t.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

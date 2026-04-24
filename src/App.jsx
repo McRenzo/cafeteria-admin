@@ -176,10 +176,10 @@ export default function App() {
           {activePage === 'dashboard' && <>
             <div className="stats-grid">
               {[
-                { label: 'Asistencias hoy', icon: TrendingUp },
-                { label: 'Activos ahora', icon: Users },
-                { label: 'Tardanzas', icon: Clock },
-                { label: 'Sin registrar', icon: AlertCircle },
+                { label: 'Entradas registradas', icon: TrendingUp },
+                { label: 'Salidas registradas', icon: Clock },
+                { label: 'Total trabajadores', icon: Users },
+                { label: 'Personal activo', icon: AlertCircle },
               ].map(({ label, icon: Icon }) => (
                 <div className="stat-card" key={label}>
                   <div className="stat-top">

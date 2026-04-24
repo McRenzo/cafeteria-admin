@@ -14,6 +14,13 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [activePage, setActivePage] = useState('dashboard')
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
+  const [dashboardData, setDashboardData] = useState({
+    entradasHoy: 0,
+    salidasHoy: 0,
+    totalTrabajadores: 0,
+    activos: 0,
+    ultimosRegistros: []
+  })
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -37,6 +44,12 @@ export default function App() {
   useEffect(() => {
     if (session) {
       localStorage.setItem('admin_session', JSON.stringify(session))
+    }
+  }, [session])
+
+  useEffect(() => {
+    if (session) {
+      cargarDashboard()
     }
   }, [session])
 
@@ -68,6 +81,66 @@ export default function App() {
     setUsuario('')
     setPassword('')
     setActivePage('dashboard')
+  }
+
+  const cargarDashboard = async () => {
+    try {
+      const hoy = new Date()
+      const inicio = new Date(hoy)
+      inicio.setHours(0, 0, 0, 0)
+
+      const fin = new Date(hoy)
+      fin.setHours(23, 59, 59, 999)
+
+      const { count: totalTrabajadores } = await supabase
+        .from('trabajadores')
+        .select('*', { count: 'exact', head: true })
+
+      const { count: activos } = await supabase
+        .from('trabajadores')
+        .select('*', { count: 'exact', head: true })
+        .eq('activo', true)
+
+      const { count: entradasHoy } = await supabase
+        .from('asistencia')
+        .select('*', { count: 'exact', head: true })
+        .eq('tipo', 'entrada')
+        .gte('fecha_hora', inicio.toISOString())
+        .lte('fecha_hora', fin.toISOString())
+
+      const { count: salidasHoy } = await supabase
+        .from('asistencia')
+        .select('*', { count: 'exact', head: true })
+        .eq('tipo', 'salida')
+        .gte('fecha_hora', inicio.toISOString())
+        .lte('fecha_hora', fin.toISOString())
+
+      const { data: ultimosRegistros } = await supabase
+        .from('asistencia')
+        .select(`
+        id,
+        fecha_hora,
+        tipo,
+        registrado_por,
+        trabajadores (
+          nombre_completo,
+          dni,
+          nivel
+        )
+      `)
+        .order('fecha_hora', { ascending: false })
+        .limit(8)
+
+      setDashboardData({
+        entradasHoy: entradasHoy || 0,
+        salidasHoy: salidasHoy || 0,
+        totalTrabajadores: totalTrabajadores || 0,
+        activos: activos || 0,
+        ultimosRegistros: ultimosRegistros || []
+      })
+    } catch (err) {
+      console.error('Error cargando dashboard:', err)
+    }
   }
 
   const navItems = [
@@ -176,17 +249,17 @@ export default function App() {
           {activePage === 'dashboard' && <>
             <div className="stats-grid">
               {[
-                { label: 'Entradas registradas', icon: TrendingUp },
-                { label: 'Salidas registradas', icon: Clock },
-                { label: 'Total trabajadores', icon: Users },
-                { label: 'Personal activo', icon: AlertCircle },
-              ].map(({ label, icon: Icon }) => (
+                { label: 'Entradas hoy', value: dashboardData.entradasHoy, icon: TrendingUp },
+                { label: 'Salidas hoy', value: dashboardData.salidasHoy, icon: Clock },
+                { label: 'Trabajadores', value: dashboardData.totalTrabajadores, icon: Users },
+                { label: 'Activos', value: dashboardData.activos, icon: AlertCircle },
+              ].map(({ label, value, icon: Icon }) => (
                 <div className="stat-card" key={label}>
                   <div className="stat-top">
                     <span className="stat-label">{label}</span>
                     <div className="stat-icon"><Icon size={14} /></div>
                   </div>
-                  <p className="stat-value">—</p>
+                  <p className="stat-value">{value}</p>
                 </div>
               ))}
             </div>
@@ -195,9 +268,38 @@ export default function App() {
                 <span className="table-title">Últimos registros</span>
                 <span className="badge">Hoy</span>
               </div>
-              <div className="empty-rows">
-                <p>Sin registros aún</p>
-              </div>
+              {dashboardData.ultimosRegistros.length === 0 ? (
+                <div className="empty-rows">
+                  <p>Sin registros aún</p>
+                </div>
+              ) : (
+                <div className="records-list">
+                  {dashboardData.ultimosRegistros.map((r) => (
+                    <div className="record-row" key={r.id}>
+                      <div>
+                        <p className="record-name">
+                          {r.trabajadores?.nombre_completo || 'Sin nombre'}
+                        </p>
+                        <span className="record-detail">
+                          DNI: {r.trabajadores?.dni || 'N/A'} · {r.trabajadores?.nivel || 'N/A'}
+                        </span>
+                      </div>
+
+                      <div className="record-right">
+                        <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>
+                          {r.tipo}
+                        </span>
+                        <span className="record-time">
+                          {new Date(r.fecha_hora).toLocaleTimeString('es-PE', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>}
 

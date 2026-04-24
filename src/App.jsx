@@ -21,6 +21,9 @@ export default function App() {
     activos: 0,
     ultimosRegistros: []
   })
+  const [trabajadores, setTrabajadores] = useState([])
+  const [busquedaTrabajador, setBusquedaTrabajador] = useState('')
+  const [loadingTrabajadores, setLoadingTrabajadores] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -52,6 +55,12 @@ export default function App() {
       cargarDashboard()
     }
   }, [session])
+
+  useEffect(() => {
+    if (session && activePage === 'trabajadores') {
+      cargarTrabajadores()
+    }
+  }, [session, activePage])
 
   const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))
 
@@ -111,7 +120,7 @@ export default function App() {
         .lte('fecha_hora', fin.toISOString())
       if (entradasError) throw entradasError
 
-      const { count: salidasHoy, error: salidasError  } = await supabase
+      const { count: salidasHoy, error: salidasError } = await supabase
         .from('asistencia')
         .select('*', { count: 'exact', head: true })
         .eq('tipo', 'salida')
@@ -147,6 +156,26 @@ export default function App() {
       })
     } catch (err) {
       console.error('Error cargando dashboard:', err)
+    }
+  }
+
+  const cargarTrabajadores = async () => {
+    setLoadingTrabajadores(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('trabajadores')
+        .select('*')
+        .order('nombre_completo', { ascending: true })
+
+      if (error) throw error
+
+      setTrabajadores(data || [])
+    } catch (err) {
+      console.error('Error cargando trabajadores:', err)
+      alert('No se pudieron cargar los trabajadores')
+    } finally {
+      setLoadingTrabajadores(false)
     }
   }
 
@@ -204,6 +233,16 @@ export default function App() {
 
   /* ── ADMIN ── */
   const activeNav = navItems.find(n => n.id === activePage)
+
+  const trabajadoresFiltrados = trabajadores.filter((t) => {
+    const texto = busquedaTrabajador.toLowerCase()
+
+    return (
+      t.nombre_completo?.toLowerCase().includes(texto) ||
+      t.dni?.includes(texto) ||
+      t.nivel?.toLowerCase().includes(texto)
+    )
+  })
 
   return (
     <div className="admin-layout">
@@ -323,7 +362,85 @@ export default function App() {
             </div>
           </>}
 
-          {activePage !== 'dashboard' && (
+          {activePage === 'trabajadores' && (
+            <div className="table-card">
+              <div className="table-header">
+                <div>
+                  <span className="table-title">Personal registrado</span>
+                  <p className="table-subtitle">
+                    Gestión de trabajadores del cafetín
+                  </p>
+                </div>
+
+                <button className="theme-pill" onClick={cargarTrabajadores}>
+                  <RefreshCw size={13} />
+                  Actualizar
+                </button>
+              </div>
+
+              <div className="table-tools">
+                <input
+                  className="search-input"
+                  placeholder="Buscar por nombre, DNI o nivel..."
+                  value={busquedaTrabajador}
+                  onChange={(e) => setBusquedaTrabajador(e.target.value)}
+                />
+              </div>
+
+              {loadingTrabajadores ? (
+                <div className="empty-rows">
+                  <p>Cargando trabajadores...</p>
+                </div>
+              ) : trabajadoresFiltrados.length === 0 ? (
+                <div className="empty-rows">
+                  <p>No se encontraron trabajadores</p>
+                </div>
+              ) : (
+                <div className="responsive-table">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Trabajador</th>
+                        <th>DNI</th>
+                        <th>Nivel</th>
+                        <th>Estado</th>
+                        <th>Creado por</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trabajadoresFiltrados.map((t) => (
+                        <tr key={t.id}>
+                          <td>
+                            <div className="worker-cell">
+                              {t.foto_url ? (
+                                <img src={t.foto_url} alt={t.nombre_completo} />
+                              ) : (
+                                <div className="worker-avatar">
+                                  {t.nombre_completo?.charAt(0)?.toUpperCase() || 'T'}
+                                </div>
+                              )}
+
+                              <span>{t.nombre_completo}</span>
+                            </div>
+                          </td>
+                          <td>{t.dni}</td>
+                          <td>{t.nivel}</td>
+                          <td>
+                            <span className={`badge ${t.activo ? 'entrada' : 'inactivo'}`}>
+                              {t.activo ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                          <td>{t.creado_por || 'Admin'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activePage !== 'dashboard' && activePage !== 'trabajadores' && (
             <div className="empty-state">
               {activeNav && <activeNav.icon size={28} strokeWidth={1.2} />}
               <p>{activeNav?.label}</p>

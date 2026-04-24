@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Users, ClipboardList, UserCog,
-  LogOut, Coffee, Sun, Moon, TrendingUp, Clock, AlertCircle,
+  LogOut, Coffee, Sun, Moon, TrendingUp, Clock, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './App.css'
@@ -92,44 +92,51 @@ export default function App() {
       const fin = new Date(hoy)
       fin.setHours(23, 59, 59, 999)
 
-      const { count: totalTrabajadores } = await supabase
+      const { count: totalTrabajadores, error: totalError } = await supabase
         .from('trabajadores')
         .select('*', { count: 'exact', head: true })
+      if (totalError) throw totalError
 
-      const { count: activos } = await supabase
+      const { count: activos, error: activosError } = await supabase
         .from('trabajadores')
         .select('*', { count: 'exact', head: true })
         .eq('activo', true)
+      if (activosError) throw activosError
 
-      const { count: entradasHoy } = await supabase
+      const { count: entradasHoy, error: entradasError } = await supabase
         .from('asistencia')
         .select('*', { count: 'exact', head: true })
         .eq('tipo', 'entrada')
         .gte('fecha_hora', inicio.toISOString())
         .lte('fecha_hora', fin.toISOString())
+      if (entradasError) throw entradasError
 
-      const { count: salidasHoy } = await supabase
+      const { count: salidasHoy, error: salidasError  } = await supabase
         .from('asistencia')
         .select('*', { count: 'exact', head: true })
         .eq('tipo', 'salida')
         .gte('fecha_hora', inicio.toISOString())
         .lte('fecha_hora', fin.toISOString())
+      if (salidasError) throw salidasError
 
-      const { data: ultimosRegistros } = await supabase
+      const { data: ultimosRegistros, error: registrosError } = await supabase
         .from('asistencia')
         .select(`
-        id,
-        fecha_hora,
-        tipo,
-        registrado_por,
-        trabajadores (
-          nombre_completo,
-          dni,
-          nivel
-        )
-      `)
+          id,
+          fecha_hora,
+          tipo,
+          registrado_por,
+          trabajadores (
+            nombre_completo,
+            dni,
+            nivel
+          )
+        `)
+        .gte('fecha_hora', inicio.toISOString())
+        .lte('fecha_hora', fin.toISOString())
         .order('fecha_hora', { ascending: false })
         .limit(8)
+      if (registrosError) throw registrosError
 
       setDashboardData({
         entradasHoy: entradasHoy || 0,
@@ -221,8 +228,12 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="user-row">
-            <div className="user-avatar">{session.usuario.charAt(0).toUpperCase()}</div>
-            <span className="user-name">{session.usuario}</span>
+            <div className="user-avatar">
+              {session?.usuario?.charAt(0)?.toUpperCase() || 'A'}
+            </div>
+            <span className="user-name">
+              {session?.usuario || 'Administrador'}
+            </span>
           </div>
           <button className="icon-btn danger" onClick={handleLogout} title="Cerrar sesión">
             <LogOut size={15} />
@@ -238,6 +249,10 @@ export default function App() {
           </div>
           <div className="topbar-right">
             <div className="online-badge"><span className="online-dot" />En línea</div>
+            <button className="theme-pill" onClick={cargarDashboard}>
+              <RefreshCw size={13} />
+              Actualizar
+            </button>
             <button className="theme-pill" onClick={toggleTheme}>
               {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
               {theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
@@ -266,7 +281,7 @@ export default function App() {
             <div className="table-card">
               <div className="table-header">
                 <span className="table-title">Últimos registros</span>
-                <span className="badge">Hoy</span>
+                <span className="badge">Recientes</span>
               </div>
               {dashboardData.ultimosRegistros.length === 0 ? (
                 <div className="empty-rows">
@@ -274,30 +289,35 @@ export default function App() {
                 </div>
               ) : (
                 <div className="records-list">
-                  {dashboardData.ultimosRegistros.map((r) => (
-                    <div className="record-row" key={r.id}>
-                      <div>
-                        <p className="record-name">
-                          {r.trabajadores?.nombre_completo || 'Sin nombre'}
-                        </p>
-                        <span className="record-detail">
-                          DNI: {r.trabajadores?.dni || 'N/A'} · {r.trabajadores?.nivel || 'N/A'}
-                        </span>
-                      </div>
+                  {dashboardData.ultimosRegistros.map((r) => {
+                    const fechaRegistro = new Date(r.fecha_hora)
 
-                      <div className="record-right">
-                        <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>
-                          {r.tipo}
-                        </span>
-                        <span className="record-time">
-                          {new Date(r.fecha_hora).toLocaleTimeString('es-PE', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </span>
+                    return (
+                      <div className="record-row" key={r.id}>
+                        <div>
+                          <p className="record-name">
+                            {r.trabajadores?.nombre_completo || 'Sin nombre'}
+                          </p>
+                          <span className="record-detail">
+                            DNI: {r.trabajadores?.dni || 'N/A'} · {r.trabajadores?.nivel || 'N/A'}
+                          </span>
+                        </div>
+
+                        <div className="record-right">
+                          <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>
+                            {r.tipo}
+                          </span>
+                          <span className="record-time">
+                            {fechaRegistro.toLocaleDateString('es-PE')} -{' '}
+                            {fechaRegistro.toLocaleTimeString('es-PE', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>

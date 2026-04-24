@@ -24,6 +24,13 @@ export default function App() {
   const [trabajadores, setTrabajadores] = useState([])
   const [busquedaTrabajador, setBusquedaTrabajador] = useState('')
   const [loadingTrabajadores, setLoadingTrabajadores] = useState(false)
+  const [showModalTrabajador, setShowModalTrabajador] = useState(false)
+  const [nuevoTrabajador, setNuevoTrabajador] = useState({
+    nombre_completo: '',
+    dni: '',
+    nivel: 'primaria'
+  })
+  const [fotoTrabajador, setFotoTrabajador] = useState(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -196,6 +203,73 @@ export default function App() {
     }
   }
 
+  const crearTrabajador = async (e) => {
+    e.preventDefault()
+
+    if (!nuevoTrabajador.nombre_completo || !nuevoTrabajador.dni) {
+      alert('Completa nombre y DNI')
+      return
+    }
+
+    try {
+      let fotoUrl = null
+
+      if (fotoTrabajador) {
+        const fileExt = fotoTrabajador.name.split('.').pop()
+        const fileName = `${Date.now()}-${nuevoTrabajador.dni}.${fileExt}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('fotos_personal')
+          .upload(fileName, fotoTrabajador, {
+            cacheControl: '3600',
+            upsert: true,
+          })
+
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage
+          .from('fotos_personal')
+          .getPublicUrl(fileName)
+
+        fotoUrl = urlData.publicUrl
+      }
+
+      const payload = {
+        nombre_completo: nuevoTrabajador.nombre_completo.trim(),
+        dni: nuevoTrabajador.dni.trim(),
+        nivel: nuevoTrabajador.nivel,
+        foto_url: fotoUrl,
+        activo: true,
+        creado_por: session?.usuario || 'admin_web'
+      }
+
+      const { error } = await supabase
+        .from('trabajadores')
+        .insert([payload])
+
+      if (error) throw error
+
+      setShowModalTrabajador(false)
+      setNuevoTrabajador({
+        nombre_completo: '',
+        dni: '',
+        nivel: 'primaria'
+      })
+      setFotoTrabajador(null)
+
+      await cargarTrabajadores()
+      await cargarDashboard()
+    } catch (err) {
+      console.error('Error creando trabajador:', err)
+      alert('No se pudo crear el trabajador')
+    }
+  }
+
+  const handleRefresh = () => {
+  if (activePage === 'dashboard') cargarDashboard()
+  if (activePage === 'trabajadores') cargarTrabajadores()
+}
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'trabajadores', label: 'Trabajadores', icon: Users },
@@ -305,7 +379,7 @@ export default function App() {
           </div>
           <div className="topbar-right">
             <div className="online-badge"><span className="online-dot" />En línea</div>
-            <button className="theme-pill" onClick={cargarDashboard}>
+            <button className="theme-pill" onClick={handleRefresh}>
               <RefreshCw size={13} />
               Actualizar
             </button>
@@ -389,9 +463,8 @@ export default function App() {
                   </p>
                 </div>
 
-                <button className="theme-pill" onClick={cargarTrabajadores}>
-                  <RefreshCw size={13} />
-                  Actualizar
+                <button className="primary-action" onClick={() => setShowModalTrabajador(true)}>
+                  + Nuevo trabajador
                 </button>
               </div>
 
@@ -475,6 +548,107 @@ export default function App() {
           )}
         </div>
       </main>
+      {showModalTrabajador && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h2>Nuevo trabajador</h2>
+                <p>Registra personal del cafetín</p>
+              </div>
+
+              <button
+                className="modal-close"
+                onClick={() => {
+                  setShowModalTrabajador(false)
+                  setFotoTrabajador(null)
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <form className="modal-form" onSubmit={crearTrabajador}>
+              <div className="field">
+                <label>Nombre completo</label>
+                <input
+                  value={nuevoTrabajador.nombre_completo}
+                  onChange={(e) =>
+                    setNuevoTrabajador({
+                      ...nuevoTrabajador,
+                      nombre_completo: e.target.value
+                    })
+                  }
+                  placeholder="Ej. Juan Pérez"
+                />
+              </div>
+
+              <div className="field">
+                <label>DNI</label>
+                <input
+                  value={nuevoTrabajador.dni}
+                  onChange={(e) =>
+                    setNuevoTrabajador({
+                      ...nuevoTrabajador,
+                      dni: e.target.value
+                    })
+                  }
+                  placeholder="Ej. 12345678"
+                />
+              </div>
+
+              <div className="field">
+                <label>Nivel</label>
+                <select
+                  value={nuevoTrabajador.nivel}
+                  onChange={(e) =>
+                    setNuevoTrabajador({
+                      ...nuevoTrabajador,
+                      nivel: e.target.value
+                    })
+                  }
+                >
+                  <option value="primaria">Primaria</option>
+                  <option value="secundaria">Secundaria</option>
+                </select>
+              </div>
+
+              <div className="field">
+                <label>Foto del trabajador</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files[0]
+                    if (file && !file.type.startsWith('image/')) {
+                      alert('Selecciona una imagen válida')
+                      return
+                    }
+                    setFotoTrabajador(file)
+                  }}
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="secondary-action"
+                  onClick={() => {
+                    setShowModalTrabajador(false)
+                    setFotoTrabajador(null)
+                  }}
+                >
+                  Cancelar
+                </button>
+
+                <button type="submit" className="primary-action">
+                  Guardar trabajador
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

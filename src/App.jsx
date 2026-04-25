@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Users, ClipboardList, UserCog,
   LogOut, Coffee, Sun, Moon, TrendingUp, Clock, AlertCircle, RefreshCw,
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import './App.css'
+import { QRCodeCanvas } from 'qrcode.react'
+import html2canvas from 'html2canvas'
+import { useState, useEffect, useRef } from 'react'
 
 export default function App() {
   const [usuario, setUsuario] = useState('')
@@ -31,6 +33,9 @@ export default function App() {
     nivel: 'primaria'
   })
   const [fotoTrabajador, setFotoTrabajador] = useState(null)
+  const [trabajadorEditando, setTrabajadorEditando] = useState(null)
+  const [trabajadorQR, setTrabajadorQR] = useState(null)
+  const carnetRef = useRef(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -39,34 +44,23 @@ export default function App() {
 
   useEffect(() => {
     const savedSession = localStorage.getItem('admin_session')
-
     if (savedSession) {
-      try {
-        setSession(JSON.parse(savedSession))
-      } catch {
-        localStorage.removeItem('admin_session')
-      }
+      try { setSession(JSON.parse(savedSession)) }
+      catch { localStorage.removeItem('admin_session') }
     }
-
     setCheckingSession(false)
   }, [])
 
   useEffect(() => {
-    if (session) {
-      localStorage.setItem('admin_session', JSON.stringify(session))
-    }
+    if (session) localStorage.setItem('admin_session', JSON.stringify(session))
   }, [session])
 
   useEffect(() => {
-    if (session) {
-      cargarDashboard()
-    }
+    if (session) cargarDashboard()
   }, [session])
 
   useEffect(() => {
-    if (session && activePage === 'trabajadores') {
-      cargarTrabajadores()
-    }
+    if (session && activePage === 'trabajadores') cargarTrabajadores()
   }, [session, activePage])
 
   const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))
@@ -87,8 +81,7 @@ export default function App() {
     } catch (err) {
       console.error(err)
       alert('Error de conexión con Supabase')
-    }
-    finally { setLoading(false) }
+    } finally { setLoading(false) }
   }
 
   const handleLogout = () => {
@@ -102,57 +95,14 @@ export default function App() {
   const cargarDashboard = async () => {
     try {
       const hoy = new Date()
-      const inicio = new Date(hoy)
-      inicio.setHours(0, 0, 0, 0)
+      const inicio = new Date(hoy); inicio.setHours(0, 0, 0, 0)
+      const fin = new Date(hoy); fin.setHours(23, 59, 59, 999)
 
-      const fin = new Date(hoy)
-      fin.setHours(23, 59, 59, 999)
-
-      const { count: totalTrabajadores, error: totalError } = await supabase
-        .from('trabajadores')
-        .select('*', { count: 'exact', head: true })
-      if (totalError) throw totalError
-
-      const { count: activos, error: activosError } = await supabase
-        .from('trabajadores')
-        .select('*', { count: 'exact', head: true })
-        .eq('activo', true)
-      if (activosError) throw activosError
-
-      const { count: entradasHoy, error: entradasError } = await supabase
-        .from('asistencia')
-        .select('*', { count: 'exact', head: true })
-        .eq('tipo', 'entrada')
-        .gte('fecha_hora', inicio.toISOString())
-        .lte('fecha_hora', fin.toISOString())
-      if (entradasError) throw entradasError
-
-      const { count: salidasHoy, error: salidasError } = await supabase
-        .from('asistencia')
-        .select('*', { count: 'exact', head: true })
-        .eq('tipo', 'salida')
-        .gte('fecha_hora', inicio.toISOString())
-        .lte('fecha_hora', fin.toISOString())
-      if (salidasError) throw salidasError
-
-      const { data: ultimosRegistros, error: registrosError } = await supabase
-        .from('asistencia')
-        .select(`
-          id,
-          fecha_hora,
-          tipo,
-          registrado_por,
-          trabajadores (
-            nombre_completo,
-            dni,
-            nivel
-          )
-        `)
-        .gte('fecha_hora', inicio.toISOString())
-        .lte('fecha_hora', fin.toISOString())
-        .order('fecha_hora', { ascending: false })
-        .limit(8)
-      if (registrosError) throw registrosError
+      const { count: totalTrabajadores } = await supabase.from('trabajadores').select('*', { count: 'exact', head: true })
+      const { count: activos } = await supabase.from('trabajadores').select('*', { count: 'exact', head: true }).eq('activo', true)
+      const { count: entradasHoy } = await supabase.from('asistencia').select('*', { count: 'exact', head: true }).eq('tipo', 'entrada').gte('fecha_hora', inicio.toISOString()).lte('fecha_hora', fin.toISOString())
+      const { count: salidasHoy } = await supabase.from('asistencia').select('*', { count: 'exact', head: true }).eq('tipo', 'salida').gte('fecha_hora', inicio.toISOString()).lte('fecha_hora', fin.toISOString())
+      const { data: ultimosRegistros } = await supabase.from('asistencia').select(`id, fecha_hora, tipo, registrado_por, trabajadores (nombre_completo, dni, nivel)`).gte('fecha_hora', inicio.toISOString()).lte('fecha_hora', fin.toISOString()).order('fecha_hora', { ascending: false }).limit(8)
 
       setDashboardData({
         entradasHoy: entradasHoy || 0,
@@ -161,40 +111,25 @@ export default function App() {
         activos: activos || 0,
         ultimosRegistros: ultimosRegistros || []
       })
-    } catch (err) {
-      console.error('Error cargando dashboard:', err)
-    }
+    } catch (err) { console.error('Error cargando dashboard:', err) }
   }
 
   const cargarTrabajadores = async () => {
     setLoadingTrabajadores(true)
-
     try {
-      const { data, error } = await supabase
-        .from('trabajadores')
-        .select('*')
-        .order('nombre_completo', { ascending: true })
-
+      const { data, error } = await supabase.from('trabajadores').select('*').order('nombre_completo', { ascending: true })
       if (error) throw error
-
       setTrabajadores(data || [])
     } catch (err) {
       console.error('Error cargando trabajadores:', err)
       alert('No se pudieron cargar los trabajadores')
-    } finally {
-      setLoadingTrabajadores(false)
-    }
+    } finally { setLoadingTrabajadores(false) }
   }
 
   const cambiarEstadoTrabajador = async (id, estadoActual) => {
     try {
-      const { error } = await supabase
-        .from('trabajadores')
-        .update({ activo: !estadoActual })
-        .eq('id', id)
-
+      const { error } = await supabase.from('trabajadores').update({ activo: !estadoActual }).eq('id', id)
       if (error) throw error
-
       await cargarTrabajadores()
       await cargarDashboard()
     } catch (err) {
@@ -203,72 +138,68 @@ export default function App() {
     }
   }
 
-  const crearTrabajador = async (e) => {
+  const guardarTrabajador = async (e) => {
     e.preventDefault()
-
-    if (!nuevoTrabajador.nombre_completo || !nuevoTrabajador.dni) {
-      alert('Completa nombre y DNI')
-      return
-    }
-
+    if (!nuevoTrabajador.nombre_completo || !nuevoTrabajador.dni) { alert('Completa nombre y DNI'); return }
     try {
-      let fotoUrl = null
-
+      let fotoUrl = trabajadorEditando?.foto_url || null
       if (fotoTrabajador) {
         const fileExt = fotoTrabajador.name.split('.').pop()
         const fileName = `${Date.now()}-${nuevoTrabajador.dni}.${fileExt}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('fotos_personal')
-          .upload(fileName, fotoTrabajador, {
-            cacheControl: '3600',
-            upsert: true,
-          })
-
+        const { error: uploadError } = await supabase.storage.from('fotos_personal').upload(fileName, fotoTrabajador, { cacheControl: '3600', upsert: true })
         if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage
-          .from('fotos_personal')
-          .getPublicUrl(fileName)
-
+        const { data: urlData } = supabase.storage.from('fotos_personal').getPublicUrl(fileName)
         fotoUrl = urlData.publicUrl
       }
-
       const payload = {
         nombre_completo: nuevoTrabajador.nombre_completo.trim(),
         dni: nuevoTrabajador.dni.trim(),
         nivel: nuevoTrabajador.nivel,
         foto_url: fotoUrl,
-        activo: true,
+        activo: trabajadorEditando ? trabajadorEditando.activo : true,
         creado_por: session?.usuario || 'admin_web'
       }
-
-      const { error } = await supabase
-        .from('trabajadores')
-        .insert([payload])
-
+      let error
+      if (trabajadorEditando) {
+        const { error: updateError } = await supabase.from('trabajadores').update(payload).eq('id', trabajadorEditando.id)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabase.from('trabajadores').insert([payload])
+        error = insertError
+      }
       if (error) throw error
-
       setShowModalTrabajador(false)
-      setNuevoTrabajador({
-        nombre_completo: '',
-        dni: '',
-        nivel: 'primaria'
-      })
+      setNuevoTrabajador({ nombre_completo: '', dni: '', nivel: 'primaria' })
       setFotoTrabajador(null)
-
+      setTrabajadorEditando(null)
       await cargarTrabajadores()
       await cargarDashboard()
     } catch (err) {
-      console.error('Error creando trabajador:', err)
-      alert('No se pudo crear el trabajador')
+      console.error('Error guardando trabajador:', err)
+      alert('No se pudo guardar el trabajador')
     }
   }
 
   const handleRefresh = () => {
-  if (activePage === 'dashboard') cargarDashboard()
-  if (activePage === 'trabajadores') cargarTrabajadores()
-}
+    if (activePage === 'dashboard') cargarDashboard()
+    if (activePage === 'trabajadores') cargarTrabajadores()
+  }
+
+  const descargarCarnet = async () => {
+    if (!carnetRef.current || !trabajadorQR) return
+
+    const canvas = await html2canvas(carnetRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 4,
+      useCORS: true,
+      allowTaint: true
+    })
+
+    const link = document.createElement('a')
+    link.href = canvas.toDataURL('image/png')
+    link.download = `carnet-${trabajadorQR.dni}.png`
+    link.click()
+  }
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -277,20 +208,15 @@ export default function App() {
     { id: 'usuarios', label: 'Usuarios', icon: UserCog },
   ]
 
-  if (checkingSession) {
-    return (
-      <div className="login-page">
-        <div className="login-card">
-          <div className="login-logo">
-            <Coffee size={20} strokeWidth={2} />
-          </div>
-          <p className="login-sub">Cargando sesión...</p>
-        </div>
+  if (checkingSession) return (
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-logo"><Coffee size={20} strokeWidth={2} /></div>
+        <p className="login-sub">Cargando sesión...</p>
       </div>
-    )
-  }
+    </div>
+  )
 
-  /* ── LOGIN ── */
   if (!session) return (
     <div className="login-page">
       <div className="login-glow" />
@@ -322,17 +248,10 @@ export default function App() {
     </div>
   )
 
-  /* ── ADMIN ── */
   const activeNav = navItems.find(n => n.id === activePage)
-
-  const trabajadoresFiltrados = trabajadores.filter((t) => {
+  const trabajadoresFiltrados = trabajadores.filter(t => {
     const texto = busquedaTrabajador.toLowerCase()
-
-    return (
-      t.nombre_completo?.toLowerCase().includes(texto) ||
-      t.dni?.includes(texto) ||
-      t.nivel?.toLowerCase().includes(texto)
-    )
+    return t.nombre_completo?.toLowerCase().includes(texto) || t.dni?.includes(texto) || t.nivel?.toLowerCase().includes(texto)
   })
 
   return (
@@ -345,7 +264,6 @@ export default function App() {
             <p className="brand-role">Admin Panel</p>
           </div>
         </div>
-
         <nav className="nav">
           {navItems.map(({ id, label, icon: Icon }) => (
             <button key={id} className={`nav-item${activePage === id ? ' active' : ''}`} onClick={() => setActivePage(id)}>
@@ -355,15 +273,10 @@ export default function App() {
             </button>
           ))}
         </nav>
-
         <div className="sidebar-footer">
           <div className="user-row">
-            <div className="user-avatar">
-              {session?.usuario?.charAt(0)?.toUpperCase() || 'A'}
-            </div>
-            <span className="user-name">
-              {session?.usuario || 'Administrador'}
-            </span>
+            <div className="user-avatar">{session?.usuario?.charAt(0)?.toUpperCase() || 'A'}</div>
+            <span className="user-name">{session?.usuario || 'Administrador'}</span>
           </div>
           <button className="icon-btn danger" onClick={handleLogout} title="Cerrar sesión">
             <LogOut size={15} />
@@ -380,8 +293,7 @@ export default function App() {
           <div className="topbar-right">
             <div className="online-badge"><span className="online-dot" />En línea</div>
             <button className="theme-pill" onClick={handleRefresh}>
-              <RefreshCw size={13} />
-              Actualizar
+              <RefreshCw size={13} /> Actualizar
             </button>
             <button className="theme-pill" onClick={toggleTheme}>
               {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
@@ -414,35 +326,21 @@ export default function App() {
                 <span className="badge">Recientes</span>
               </div>
               {dashboardData.ultimosRegistros.length === 0 ? (
-                <div className="empty-rows">
-                  <p>Sin registros aún</p>
-                </div>
+                <div className="empty-rows"><p>Sin registros aún</p></div>
               ) : (
                 <div className="records-list">
                   {dashboardData.ultimosRegistros.map((r) => {
-                    const fechaRegistro = new Date(r.fecha_hora)
-
+                    const fecha = new Date(r.fecha_hora)
                     return (
                       <div className="record-row" key={r.id}>
                         <div>
-                          <p className="record-name">
-                            {r.trabajadores?.nombre_completo || 'Sin nombre'}
-                          </p>
-                          <span className="record-detail">
-                            DNI: {r.trabajadores?.dni || 'N/A'} · {r.trabajadores?.nivel || 'N/A'}
-                          </span>
+                          <p className="record-name">{r.trabajadores?.nombre_completo || 'Sin nombre'}</p>
+                          <span className="record-detail">DNI: {r.trabajadores?.dni || 'N/A'} · {r.trabajadores?.nivel || 'N/A'}</span>
                         </div>
-
                         <div className="record-right">
-                          <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>
-                            {r.tipo}
-                          </span>
+                          <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>{r.tipo}</span>
                           <span className="record-time">
-                            {fechaRegistro.toLocaleDateString('es-PE')} -{' '}
-                            {fechaRegistro.toLocaleTimeString('es-PE', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                            {fecha.toLocaleDateString('es-PE')} - {fecha.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
                       </div>
@@ -458,77 +356,44 @@ export default function App() {
               <div className="table-header">
                 <div>
                   <span className="table-title">Personal registrado</span>
-                  <p className="table-subtitle">
-                    Gestión de trabajadores del cafetín
-                  </p>
+                  <p className="table-subtitle">Gestión de trabajadores del cafetín</p>
                 </div>
-
-                <button className="primary-action" onClick={() => setShowModalTrabajador(true)}>
-                  + Nuevo trabajador
-                </button>
+                <button className="primary-action" onClick={() => setShowModalTrabajador(true)}>+ Nuevo trabajador</button>
               </div>
-
               <div className="table-tools">
-                <input
-                  className="search-input"
-                  placeholder="Buscar por nombre, DNI o nivel..."
-                  value={busquedaTrabajador}
-                  onChange={(e) => setBusquedaTrabajador(e.target.value)}
-                />
+                <input className="search-input" placeholder="Buscar por nombre, DNI o nivel..." value={busquedaTrabajador} onChange={e => setBusquedaTrabajador(e.target.value)} />
               </div>
-
               {loadingTrabajadores ? (
-                <div className="empty-rows">
-                  <p>Cargando trabajadores...</p>
-                </div>
+                <div className="empty-rows"><p>Cargando trabajadores...</p></div>
               ) : trabajadoresFiltrados.length === 0 ? (
-                <div className="empty-rows">
-                  <p>No se encontraron trabajadores</p>
-                </div>
+                <div className="empty-rows"><p>No se encontraron trabajadores</p></div>
               ) : (
                 <div className="responsive-table">
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>Trabajador</th>
-                        <th>DNI</th>
-                        <th>Nivel</th>
-                        <th>Estado</th>
-                        <th>Creado por</th>
-                        <th>Acciones</th>
+                        <th>Trabajador</th><th>DNI</th><th>Nivel</th><th>Estado</th><th>Creado por</th><th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {trabajadoresFiltrados.map((t) => (
+                      {trabajadoresFiltrados.map(t => (
                         <tr key={t.id}>
                           <td>
                             <div className="worker-cell">
-                              {t.foto_url ? (
-                                <img src={t.foto_url} alt={t.nombre_completo} />
-                              ) : (
-                                <div className="worker-avatar">
-                                  {t.nombre_completo?.charAt(0)?.toUpperCase() || 'T'}
-                                </div>
-                              )}
-
+                              {t.foto_url ? <img src={t.foto_url} alt={t.nombre_completo} /> : <div className="worker-avatar">{t.nombre_completo?.charAt(0)?.toUpperCase() || 'T'}</div>}
                               <span>{t.nombre_completo}</span>
                             </div>
                           </td>
                           <td>{t.dni}</td>
                           <td>{t.nivel}</td>
-                          <td>
-                            <span className={`badge ${t.activo ? 'entrada' : 'inactivo'}`}>
-                              {t.activo ? 'Activo' : 'Inactivo'}
-                            </span>
-                          </td>
+                          <td><span className={`badge ${t.activo ? 'entrada' : 'inactivo'}`}>{t.activo ? 'Activo' : 'Inactivo'}</span></td>
                           <td>{t.creado_por || 'Admin'}</td>
                           <td>
-                            <button
-                              className={`status-btn ${t.activo ? 'danger-action' : 'success-action'}`}
-                              onClick={() => cambiarEstadoTrabajador(t.id, t.activo)}
-                            >
-                              {t.activo ? 'Desactivar' : 'Activar'}
-                            </button>
+                            <div className="actions-cell">
+                              <button className="status-btn" onClick={() => { setTrabajadorEditando(t); setNuevoTrabajador({ nombre_completo: t.nombre_completo, dni: t.dni, nivel: t.nivel }); setShowModalTrabajador(true) }}>Editar</button>
+                              <button className="status-btn" onClick={() => setTrabajadorQR(t)}>QR</button>
+                              <button className={`status-btn ${t.activo ? 'danger-action' : 'success-action'}`} onClick={() => cambiarEstadoTrabajador(t.id, t.activo)}>{t.activo ? 'Desactivar' : 'Activar'}</button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -548,104 +413,112 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* ── MODAL TRABAJADOR ── */}
       {showModalTrabajador && (
         <div className="modal-overlay">
           <div className="modal-card">
             <div className="modal-header">
               <div>
-                <h2>Nuevo trabajador</h2>
-                <p>Registra personal del cafetín</p>
+                <h2>{trabajadorEditando ? 'Editar trabajador' : 'Nuevo trabajador'}</h2>
+                <p>{trabajadorEditando ? 'Actualiza los datos del trabajador' : 'Registra personal del cafetín'}</p>
               </div>
-
-              <button
-                className="modal-close"
-                onClick={() => {
-                  setShowModalTrabajador(false)
-                  setFotoTrabajador(null)
-                }}
-              >
-                ×
-              </button>
             </div>
-
-            <form className="modal-form" onSubmit={crearTrabajador}>
+            <form className="modal-form" onSubmit={guardarTrabajador}>
               <div className="field">
                 <label>Nombre completo</label>
-                <input
-                  value={nuevoTrabajador.nombre_completo}
-                  onChange={(e) =>
-                    setNuevoTrabajador({
-                      ...nuevoTrabajador,
-                      nombre_completo: e.target.value
-                    })
-                  }
-                  placeholder="Ej. Juan Pérez"
-                />
+                <input value={nuevoTrabajador.nombre_completo} onChange={e => setNuevoTrabajador({ ...nuevoTrabajador, nombre_completo: e.target.value })} placeholder="Ej. Juan Pérez" />
               </div>
-
               <div className="field">
                 <label>DNI</label>
-                <input
-                  value={nuevoTrabajador.dni}
-                  onChange={(e) =>
-                    setNuevoTrabajador({
-                      ...nuevoTrabajador,
-                      dni: e.target.value
-                    })
-                  }
-                  placeholder="Ej. 12345678"
-                />
+                <input value={nuevoTrabajador.dni} onChange={e => setNuevoTrabajador({ ...nuevoTrabajador, dni: e.target.value })} placeholder="Ej. 12345678" />
               </div>
-
               <div className="field">
                 <label>Nivel</label>
-                <select
-                  value={nuevoTrabajador.nivel}
-                  onChange={(e) =>
-                    setNuevoTrabajador({
-                      ...nuevoTrabajador,
-                      nivel: e.target.value
-                    })
-                  }
-                >
+                <select value={nuevoTrabajador.nivel} onChange={e => setNuevoTrabajador({ ...nuevoTrabajador, nivel: e.target.value })}>
                   <option value="primaria">Primaria</option>
                   <option value="secundaria">Secundaria</option>
                 </select>
               </div>
-
               <div className="field">
                 <label>Foto del trabajador</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files[0]
-                    if (file && !file.type.startsWith('image/')) {
-                      alert('Selecciona una imagen válida')
-                      return
-                    }
-                    setFotoTrabajador(file)
-                  }}
-                />
+                <input type="file" accept="image/*" onChange={e => { const f = e.target.files[0]; if (f && !f.type.startsWith('image/')) { alert('Selecciona una imagen válida'); return }; setFotoTrabajador(f) }} />
               </div>
-
               <div className="modal-actions">
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={() => {
-                    setShowModalTrabajador(false)
-                    setFotoTrabajador(null)
-                  }}
-                >
-                  Cancelar
-                </button>
-
-                <button type="submit" className="primary-action">
-                  Guardar trabajador
-                </button>
+                <button type="button" className="secondary-action" onClick={() => { setShowModalTrabajador(false); setFotoTrabajador(null); setTrabajadorEditando(null); setNuevoTrabajador({ nombre_completo: '', dni: '', nivel: 'primaria' }) }}>Cancelar</button>
+                <button type="submit" className="primary-action">{trabajadorEditando ? 'Actualizar trabajador' : 'Guardar trabajador'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL CARNET QR ── */}
+      {trabajadorQR && (
+        <div className="modal-overlay">
+          <div className="modal-card qr-card">
+            <div className="modal-header">
+              <div>
+                <h2>Carnet QR</h2>
+                <p>Credencial del trabajador</p>
+              </div>
+              <button className="modal-close" onClick={() => setTrabajadorQR(null)}>×</button>
+            </div>
+
+            <div className="carnet-preview" ref={carnetRef}>
+
+              {/* Header */}
+              <div className="carnet-top">
+                <p className="carnet-inst">I.E. Crl José Joaquín Inclán</p>
+              </div>
+
+              {/* Foto */}
+              <div className="carnet-photo-wrap">
+                {trabajadorQR.foto_url ? (
+                  <img
+                    src={trabajadorQR.foto_url}
+                    alt={trabajadorQR.nombre_completo}
+                    className="carnet-photo"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <div className="carnet-photo-placeholder">
+                    {trabajadorQR.nombre_completo?.charAt(0)?.toUpperCase() || 'T'}
+                  </div>
+                )}
+              </div>
+
+              {/* Nombre y DNI */}
+              <div className="carnet-info">
+                <h3>{trabajadorQR.nombre_completo}</h3>
+                <div className="carnet-dni">DNI: {trabajadorQR.dni}</div>
+              </div>
+
+              {/* QR */}
+              <div className="carnet-qr-wrap">
+                <div className="carnet-qr-box">
+                  <QRCodeCanvas
+                    value={String(trabajadorQR.id)}
+                    size={220}   // más resolución
+                    level="H"
+                    includeMargin={true}
+                  />
+                </div>
+              </div>
+
+              {/* Tiras */}
+              <div className="carnet-strips">
+                <div className="carnet-strip" style={{ background: '#ff6b35', flex: 3 }} />
+                <div className="carnet-strip" style={{ background: '#378ADD', flex: 2 }} />
+                <div className="carnet-strip" style={{ background: '#22c55e', flex: 1 }} />
+              </div>
+
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={() => setTrabajadorQR(null)}>Cerrar</button>
+              <button className="primary-action" onClick={descargarCarnet}>Descargar carnet</button>
+            </div>
           </div>
         </div>
       )}

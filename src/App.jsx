@@ -43,6 +43,15 @@ export default function App() {
   const [loadingReportes, setLoadingReportes] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('')
   const [filtroTrabajador, setFiltroTrabajador] = useState('')
+  const [usuarios, setUsuarios] = useState([])
+  const [loadingUsuarios, setLoadingUsuarios] = useState(false)
+  const [showModalUsuario, setShowModalUsuario] = useState(false)
+
+  const [nuevoUsuario, setNuevoUsuario] = useState({
+    usuario: '',
+    password: '',
+    rol: 'portero'
+  })
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -73,6 +82,12 @@ export default function App() {
   useEffect(() => {
     if (activePage === 'reportes') {
       cargarTrabajadores()
+    }
+  }, [activePage])
+
+  useEffect(() => {
+    if (activePage === 'usuarios') {
+      cargarUsuarios()
     }
   }, [activePage])
 
@@ -184,6 +199,27 @@ export default function App() {
       alert('Error cargando reportes')
     } finally {
       setLoadingReportes(false)
+    }
+  }
+
+  const cargarUsuarios = async () => {
+    setLoadingUsuarios(true)
+
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_app')
+        .select('*')
+        .order('usuario', { ascending: true })
+
+      if (error) throw error
+
+      setUsuarios(data || [])
+
+    } catch (err) {
+      console.error(err)
+      alert('Error cargando usuarios')
+    } finally {
+      setLoadingUsuarios(false)
     }
   }
 
@@ -299,6 +335,40 @@ export default function App() {
     { id: 'reportes', label: 'Reportes', icon: ClipboardList },
     { id: 'usuarios', label: 'Usuarios', icon: UserCog },
   ]
+
+  const crearUsuario = async (e) => {
+    e.preventDefault()
+
+    if (!nuevoUsuario.usuario || !nuevoUsuario.password) {
+      alert('Completa los campos')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('usuarios_app')
+        .insert([{
+          usuario: nuevoUsuario.usuario.trim().toLowerCase(),
+          password: nuevoUsuario.password,
+          rol: nuevoUsuario.rol
+        }])
+
+      if (error) throw error
+
+      setShowModalUsuario(false)
+      setNuevoUsuario({
+        usuario: '',
+        password: '',
+        rol: 'portero'
+      })
+
+      await cargarUsuarios()
+
+    } catch (err) {
+      console.error(err)
+      alert('Error creando usuario')
+    }
+  }
 
   if (checkingSession) return (
     <div className="login-page">
@@ -606,6 +676,60 @@ export default function App() {
               )}
             </div>
           )}
+
+          {activePage === 'usuarios' && (
+            <div className="table-card">
+
+              <div className="table-header">
+                <div>
+                  <span className="table-title">Usuarios del sistema</span>
+                  <p className="table-subtitle">Administradores y porteros</p>
+                </div>
+
+                <button
+                  className="primary-action"
+                  onClick={() => {
+                    setNuevoUsuario({
+                      usuario: '',
+                      password: '',
+                      rol: 'portero'
+                    })
+                    setShowModalUsuario(true)
+                  }}
+                >
+                  + Nuevo usuario
+                </button>
+              </div>
+
+              {loadingUsuarios ? (
+                <div className="empty-rows">Cargando...</div>
+              ) : (
+                <div className="responsive-table">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usuarios.map(u => (
+                        <tr key={u.id}>
+                          <td>{u.usuario}</td>
+                          <td>
+                            <span className="badge">
+                              {u.rol}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+            </div>
+          )}
         </div>
       </main>
 
@@ -714,6 +838,90 @@ export default function App() {
               <button onClick={() => setTrabajadorQR(null)}>Cerrar</button>
               <button className="primary-action" onClick={descargarCarnet}>Descargar carnet</button>
             </div>
+          </div>
+        </div>
+      )}
+      {showModalUsuario && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header">
+              <div>
+                <h2>Nuevo usuario</h2>
+                <p>Crear acceso al sistema</p>
+              </div>
+
+              <button className="modal-close" onClick={() => {
+                setShowModalUsuario(false)
+                setNuevoUsuario({
+                  usuario: '',
+                  password: '',
+                  rol: 'portero'
+                })
+              }}>
+                ×
+              </button>
+            </div>
+
+            <form className="modal-form" onSubmit={crearUsuario}>
+
+              <div className="field">
+                <label>Usuario</label>
+                <input
+                  value={nuevoUsuario.usuario}
+                  onChange={e => setNuevoUsuario({
+                    ...nuevoUsuario,
+                    usuario: e.target.value
+                  })}
+                />
+              </div>
+
+              <div className="field">
+                <label>Contraseña</label>
+                <input
+                  type="password"
+                  value={nuevoUsuario.password}
+                  onChange={e => setNuevoUsuario({
+                    ...nuevoUsuario,
+                    password: e.target.value
+                  })}
+                />
+              </div>
+
+              <div className="field">
+                <label>Rol</label>
+                <select
+                  value={nuevoUsuario.rol}
+                  onChange={e => setNuevoUsuario({
+                    ...nuevoUsuario,
+                    rol: e.target.value
+                  })}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="portero">Portero</option>
+                </select>
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModalUsuario(false)
+                    setNuevoUsuario({
+                      usuario: '',
+                      password: '',
+                      rol: 'portero'
+                    })
+                  }}
+                >
+                  Cancelar
+                </button>
+
+                <button type="submit" className="primary-action">
+                  Crear usuario
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

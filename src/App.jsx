@@ -7,6 +7,7 @@ import './App.css'
 import { QRCodeCanvas } from 'qrcode.react'
 import html2canvas from 'html2canvas'
 import { useState, useEffect, useRef } from 'react'
+import * as XLSX from 'xlsx'
 
 export default function App() {
   const [usuario, setUsuario] = useState('')
@@ -36,6 +37,12 @@ export default function App() {
   const [trabajadorEditando, setTrabajadorEditando] = useState(null)
   const [trabajadorQR, setTrabajadorQR] = useState(null)
   const carnetRef = useRef(null)
+  const [fechaInicio, setFechaInicio] = useState('')
+  const [fechaFin, setFechaFin] = useState('')
+  const [registros, setRegistros] = useState([])
+  const [loadingReportes, setLoadingReportes] = useState(false)
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroTrabajador, setFiltroTrabajador] = useState('')
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -62,6 +69,12 @@ export default function App() {
   useEffect(() => {
     if (session && activePage === 'trabajadores') cargarTrabajadores()
   }, [session, activePage])
+
+  useEffect(() => {
+    if (activePage === 'reportes') {
+      cargarTrabajadores()
+    }
+  }, [activePage])
 
   const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'))
 
@@ -124,6 +137,85 @@ export default function App() {
       console.error('Error cargando trabajadores:', err)
       alert('No se pudieron cargar los trabajadores')
     } finally { setLoadingTrabajadores(false) }
+  }
+
+  const cargarReportes = async () => {
+    if (!fechaInicio || !fechaFin) {
+      alert('Selecciona rango de fechas')
+      return
+    }
+
+    setLoadingReportes(true)
+
+    try {
+      let query = supabase
+        .from('asistencia')
+        .select(`
+        id,
+        tipo,
+        fecha_hora,
+        registrado_por,
+        trabajadores (
+          nombre_completo,
+          dni,
+          nivel
+        )
+      `)
+        .gte('fecha_hora', new Date(fechaInicio).toISOString())
+        .lte('fecha_hora', new Date(fechaFin + 'T23:59:59').toISOString())
+        .order('fecha_hora', { ascending: false })
+
+      if (filtroTipo) {
+        query = query.eq('tipo', filtroTipo)
+      }
+
+      if (filtroTrabajador) {
+        query = query.eq('trabajadores.id', filtroTrabajador)
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+
+      setRegistros(data || [])
+
+    } catch (err) {
+      console.error(err)
+      alert('Error cargando reportes')
+    } finally {
+      setLoadingReportes(false)
+    }
+  }
+
+  const exportarExcel = () => {
+    if (registros.length === 0) {
+      alert('No hay datos para exportar')
+      return
+    }
+
+    const data = registros.map(r => {
+      const fecha = new Date(r.fecha_hora)
+
+      return {
+        Nombre: r.trabajadores?.nombre_completo || '',
+        DNI: r.trabajadores?.dni || '',
+        Nivel: r.trabajadores?.nivel || '',
+        Tipo: r.tipo,
+        Fecha: fecha.toLocaleDateString('es-PE'),
+        Hora: fecha.toLocaleTimeString('es-PE', {
+          hour: '2-digit',
+          minute: '2-digit'
+        }),
+        'Registrado por': r.registrado_por
+      }
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(data)
+    const workbook = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Reportes')
+
+    XLSX.writeFile(workbook, 'reporte_asistencia.xlsx')
   }
 
   const cambiarEstadoTrabajador = async (id, estadoActual) => {
@@ -404,11 +496,114 @@ export default function App() {
             </div>
           )}
 
-          {activePage !== 'dashboard' && activePage !== 'trabajadores' && (
-            <div className="empty-state">
-              {activeNav && <activeNav.icon size={28} strokeWidth={1.2} />}
-              <p>{activeNav?.label}</p>
-              <span>Módulo en construcción</span>
+          {activePage === 'reportes' && (
+            <div className="table-card">
+
+              <div className="table-header">
+                <div>
+                  <span className="table-title">Reportes de asistencia</span>
+                  <p className="table-subtitle">Consulta por fechas y filtros</p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="secondary-action" onClick={exportarExcel}>
+                    Exportar Excel
+                  </button>
+
+                  <button className="primary-action" onClick={cargarReportes}>
+                    Buscar
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-tools" style={{ display: 'grid', gap: '10px' }}>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="date"
+                    value={fechaInicio}
+                    onChange={e => setFechaInicio(e.target.value)}
+                    className="search-input"
+                  />
+
+                  <input
+                    type="date"
+                    value={fechaFin}
+                    onChange={e => setFechaFin(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select
+                    className="search-input"
+                    value={filtroTipo}
+                    onChange={e => setFiltroTipo(e.target.value)}
+                  >
+                    <option value="">Todos</option>
+                    <option value="entrada">Entrada</option>
+                    <option value="salida">Salida</option>
+                  </select>
+
+                  <select
+                    className="search-input"
+                    value={filtroTrabajador}
+                    onChange={e => setFiltroTrabajador(e.target.value)}
+                  >
+                    <option value="">Todos los trabajadores</option>
+                    {trabajadores.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.nombre_completo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+              </div>
+
+              {loadingReportes ? (
+                <div className="empty-rows">Cargando...</div>
+              ) : registros.length === 0 ? (
+                <div className="empty-rows">Sin resultados</div>
+              ) : (
+                <div className="responsive-table">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Trabajador</th>
+                        <th>DNI</th>
+                        <th>Tipo</th>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Registrado por</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registros.map(r => {
+                        const fecha = new Date(r.fecha_hora)
+
+                        return (
+                          <tr key={r.id}>
+                            <td>{r.trabajadores?.nombre_completo}</td>
+                            <td>{r.trabajadores?.dni}</td>
+                            <td>
+                              <span className={`badge ${r.tipo === 'entrada' ? 'entrada' : 'salida'}`}>
+                                {r.tipo}
+                              </span>
+                            </td>
+                            <td>{fecha.toLocaleDateString('es-PE')}</td>
+                            <td>{fecha.toLocaleTimeString('es-PE', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</td>
+                            <td>{r.registrado_por}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

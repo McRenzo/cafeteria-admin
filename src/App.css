@@ -1094,3 +1094,42 @@ body {
   height: 4px;
   border-radius: 2px;
 }
+.mobile-menu-btn {
+  display: none;
+}
+
+@media (max-width: 900px) {
+
+  .mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px;
+    cursor: pointer;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: -260px;   /* oculto */
+    width: 240px;
+    height: 100vh;
+    z-index: 200;
+    transition: left 0.3s ease;
+  }
+
+  .sidebar.open {
+    left: 0;   /* aparece */
+  }
+
+  .nav {
+    flex-direction: column; /* 🔥 IMPORTANTE */
+  }
+
+  .main {
+    margin-left: 0;
+  }
+}

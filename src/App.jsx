@@ -16,6 +16,7 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true)
   const [loading, setLoading] = useState(false)
   const [activePage, setActivePage] = useState('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
   const [dashboardData, setDashboardData] = useState({
     entradasHoy: 0,
@@ -418,7 +419,7 @@ export default function App() {
 
   return (
     <div className="admin-layout">
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="brand">
           <div className="brand-icon"><Coffee size={18} strokeWidth={2} /></div>
           <div>
@@ -428,7 +429,10 @@ export default function App() {
         </div>
         <nav className="nav">
           {navItems.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={`nav-item${activePage === id ? ' active' : ''}`} onClick={() => setActivePage(id)}>
+            <button key={id} className={`nav-item${activePage === id ? ' active' : ''}`} onClick={() => {
+  setActivePage(id)
+  setSidebarOpen(false)
+}}>
               <Icon size={16} strokeWidth={1.8} />
               <span>{label}</span>
               {activePage === id && <div className="nav-pip" />}
@@ -448,6 +452,12 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
+          <button
+  className="mobile-menu-btn"
+  onClick={() => setSidebarOpen(true)}
+>
+  ☰
+</button>
           <div>
             <h1 className="topbar-title">{activeNav?.label}</h1>
             <p className="topbar-sub">Sistema de asistencia QR</p>

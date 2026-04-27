@@ -309,8 +309,10 @@ export default function App() {
   }
 
   const handleRefresh = () => {
-    if (activePage === 'dashboard') cargarDashboard()
-    if (activePage === 'trabajadores') cargarTrabajadores()
+    if (activePage === 'dashboard') return cargarDashboard()
+    if (activePage === 'trabajadores') return cargarTrabajadores()
+    if (activePage === 'reportes') return cargarReportes()
+    if (activePage === 'usuarios') return cargarUsuarios()
   }
 
   const descargarCarnet = async () => {
@@ -345,13 +347,11 @@ export default function App() {
     }
 
     try {
-      const { error } = await supabase
-        .from('usuarios_app')
-        .insert([{
-          usuario: nuevoUsuario.usuario.trim().toLowerCase(),
-          password: nuevoUsuario.password,
-          rol: nuevoUsuario.rol
-        }])
+      const { error } = await supabase.rpc('registrar_usuario_seguro', {
+        p_usuario: nuevoUsuario.usuario.trim().toLowerCase(),
+        p_password: nuevoUsuario.password.trim(),
+        p_rol: nuevoUsuario.rol
+      })
 
       if (error) throw error
 

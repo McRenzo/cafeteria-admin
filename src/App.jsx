@@ -824,14 +824,6 @@ export default function App() {
                   />
                 </div>
               </div>
-
-              {/* Tiras */}
-              <div className="carnet-strips">
-                <div className="carnet-strip" style={{ background: '#ff6b35', flex: 3 }} />
-                <div className="carnet-strip" style={{ background: '#378ADD', flex: 2 }} />
-                <div className="carnet-strip" style={{ background: '#22c55e', flex: 1 }} />
-              </div>
-
             </div>
 
             <div className="modal-actions">
